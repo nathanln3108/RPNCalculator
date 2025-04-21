@@ -1,0 +1,107 @@
+// PROJECT  :RPNCalculator
+// PURPOSE  :Have a working calculator
+// COURSE   :ICS3U-E
+// AUTHOR   :Nathan Le-Nguyen
+// DATE     :2025 04 22
+// MCU      :328P
+// STATUS   :Working
+// REFERENCE:http://darcy.rsgc.on.ca/ACES/TEI3M/Tasks.html#RPN   
+
+#include "Stack.h"                // Custom stack library for handling RPN operations
+#include <LiquidCrystal.h>        // Library for controlling the 16×2 LCD display
+
+#define DURATION 300              // Delay used to debounce key input
+#define DEBUG 1                   // Toggle for serial debugging messages
+
+LiquidCrystal lcd(9, 8, 7, 6, 5, 4);   // Initialize LCD with specified digital pins
+Stack stack;                           // Stack object to hold operands and results
+
+char keys[] = { '+', 'E', '.', '0', '-', '3', '2', '1', '*', '6', '5', '4', '/', '9', '8', '7' };    // Mapped keys
+uint16_t thresholds[] = { 55, 58, 62, 66, 75, 81, 88, 97, 116, 131, 151, 178, 255, 340, 511, 1023 }; // ADC input ranges
+
+String num = "", topRow = "";    // Accumulated input string and top LCD row buffer
+bool hasDecimal = false;         // Tracks whether decimal point has been used
+
+void setup() {
+  lcd.begin(16, 2);              // Start LCD with 16 columns, 2 rows
+  Serial.begin(9600);            // Initialize serial communication at 9600 baud
+  while (!Serial);               // Wait for Serial monitor to open
+  lcd.print("N. Le-Nguyen");     // Display greeting name
+  lcd.setCursor(0, 1); lcd.print("RPN Calculator"); // Display title
+  delay(5000); lcd.clear();      // Hold message then clear screen
+}
+
+char getKey() {
+  uint16_t val;
+  do val = analogRead(A5); while (val == 0); // Read analog key input until valid
+  delay(DURATION);                           // Debounce input by delaying
+  if (DEBUG) {
+    Serial.print("ADC:\t"); Serial.print(val); // Print ADC value
+    Serial.print("\tVoltage:\t"); Serial.println(val * 5.0 / 1023.0, 3); // Print voltage
+  }
+  for (uint8_t i = 0; i < 16; i++)
+    if (val <= thresholds[i]) return keys[i]; // Find matching key for threshold
+  return '?';                                 // Return '?' if no match found
+}
+
+void showTop(char ch) {
+  if (topRow.length() < 16) topRow += ch;         // Add character if space available
+  else topRow = topRow.substring(1) + ch;         // Scroll string and append new character
+  lcd.setCursor(0, 0); lcd.print(topRow);         // Update first LCD row
+}
+
+void showBottom(float v) {
+  String s = String(v, 4);                            // Convert float to string with 4 decimals
+  lcd.setCursor(0, 1); lcd.print("                "); // Clear bottom row
+  lcd.setCursor(16 - s.length(), 1); lcd.print(s);    // Right-align and display result
+}
+
+void enterPressed() {
+  if (num.length() == 0) {
+    if (!stack.isEmpty()) showBottom(stack.peek()); // Display top of stack if input empty
+    else Serial.println("Stack empty");             // Stack has no values
+  } else {
+    float val = num.toFloat();                      // Convert input string to float
+    stack.push(val);                                // Push parsed value onto stack
+    Serial.print("Pushed: "); Serial.println(val);  // Print pushed value for debug
+    num = ""; hasDecimal = false;                   // Reset input buffer and decimal flag
+  }
+}
+
+void processOp(char op) {
+  if (stack.isEmpty()) return (void)Serial.println("Error: Not enough operands."); // Check stack
+  float b = stack.pop();
+  if (stack.isEmpty()) {
+    stack.push(b); return (void)Serial.println("Error: Not enough operands.");     // Check again
+  }
+  float a = stack.pop(), r = 0;
+  switch (op) {
+    case '+': r = a + b; break;                    // Perform addition
+    case '-': r = a - b; break;                    // Perform subtraction
+    case '*': r = a * b; break;                    // Perform multiplication
+    case '/':
+      if (b == 0) {
+        Serial.println("Error: Divide by zero.");
+        stack.push(a); stack.push(b); return;      // Prevent division by zero
+      }
+      r = a / b; break;                            // Perform division
+    default:
+      Serial.println("Unknown op.");
+      stack.push(a); stack.push(b); return;        // Handle unknown operators
+  }
+  stack.push(r);                                      // Push result onto stack
+  Serial.print("Pushed result: "); Serial.println(r); // Output result
+  showBottom(r);                                      // Display result on LCD
+}
+
+void loop() {
+  char ch = getKey();            // Read key from analog input
+  Serial.println(ch);            // Print key to serial monitor
+  showTop(ch);                   // Update top row with new character
+
+  if (ch >= '0' && ch <= '9') num += ch;          // Append digit to input buffer
+  else if (ch == '.' && !hasDecimal) {
+    num += ch; hasDecimal = true;                 // Append decimal point only once
+  } else if (ch == 'E') enterPressed();           // Commit current input to stack
+  else if (ch == '+' || ch == '-' || ch == '*' || ch == '/') processOp(ch); // Execute operation
+}
