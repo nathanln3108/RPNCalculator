@@ -23,6 +23,7 @@ String num = "", topRow = "";    // Accumulated input string and top LCD row buf
 bool hasDecimal = false;         // Tracks whether decimal point has been used
 
 void setup() {
+  initStack();                   // Initialize stack size manually
   lcd.begin(16, 2);              // Start LCD with 16 columns, 2 rows
   Serial.begin(9600);            // Initialize serial communication at 9600 baud
   while (!Serial);               // Wait for Serial monitor to open
@@ -31,12 +32,17 @@ void setup() {
   delay(5000); lcd.clear();      // Hold message then clear screen
 }
 
+void initStack() {
+  uint8_t* sizePtr = (uint8_t*)((uint8_t*)&stack + sizeof(int8_t)); // Point to _size
+  *sizePtr = 20;                                                    // Set _size to 20
+}
+
 char getKey() {
   uint16_t val;
   do val = analogRead(A5); while (val == 0); // Read analog key input until valid
   delay(DURATION);                           // Debounce input by delaying
   if (DEBUG) {
-    Serial.print("ADC:\t"); Serial.print(val); // Print ADC value
+    Serial.print("ADC:\t"); Serial.print(val);                           // Print ADC value
     Serial.print("\tVoltage:\t"); Serial.println(val * 5.0 / 1023.0, 3); // Print voltage
   }
   for (uint8_t i = 0; i < 16; i++)
